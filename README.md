@@ -6,8 +6,8 @@ In this project I demonstrate my abilities to handle different tools together wi
 
 This is the list of tools and resource I use in this project:
 
-* ClickHouse database.
-* MySQLdatabase.
+* ClickHouse database
+* MySQL database
 * Kafka
 * Ansible
 * Terrform

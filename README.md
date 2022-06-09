@@ -10,6 +10,6 @@ This is the list of tools and resource I use in this project:
 * MySQL database
 * Kafka
 * Ansible
-* Terrform
+* Terraform
 * Zabbix
 * Grafana

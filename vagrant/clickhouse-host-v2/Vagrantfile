@@ -1,0 +1,21 @@
+Vagrant.configure("2") do |config|
+
+    config.vm.box = "ubuntu/jammy64"
+    config.vm.box_check_update = true
+    config.vm.network "forwarded_port", guest: 8123, host: 8123, auto_correct: true
+    config.vm.network "forwarded_port", guest: 22, host: 22101, auto_correct: true, id: 'ssh'
+    config.vm.network "private_network", ip: ENV['CLICKHOUSE_PRIVATE_IP']
+    config.vm.network "public_network", ip: ENV['CLICKHOUSE_PUBLIC_IP'], bridge: ENV['BRIDGE_NETWORK_IFACE_NAME']
+    config.vm.hostname = "clickhouse-host.local"
+    config.vm.synced_folder ".", "/vagrant", disabled: true
+    config.vm.boot_timeout = 600
+
+    config.vm.provider "virtualbox" do |vb|
+        vb.name = "clickhouse-host.local"
+        vb.gui = true
+        vb.memory = "2048"
+        vb.check_guest_additions = true
+        vb.customize [ "modifyvm", :id, "--uartmode1", "disconnected" ]
+    end
+
+end

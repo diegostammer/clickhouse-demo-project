@@ -1,0 +1,56 @@
+- name: ClickHouse Hosts
+  hosts: all
+  become: yes
+  vars:
+    database_name: "covid19"
+
+  tasks:
+    - import_tasks: common.yml
+
+    - name: Add Kafka To Linux Hosts File
+      ansible.builtin.lineinfile:
+        dest: /etc/hosts
+        line: "192.168.56.102 kafka-host.local"
+        state: present
+
+    - name: Add ClickHouse apt key
+      ansible.builtin.apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: 8919F6BD2B48D754
+        state: present
+
+    - name: Add ClickHouse apt repository
+      ansible.builtin.apt_repository:
+        repo: deb https://packages.clickhouse.com/deb stable main
+        filename: /etc/apt/sources.list.d/clickhouse.list
+        state: present
+
+    - name: Update Repositories Cache And Install clickhouse-server, clickhouse-client, python-lxml
+      ansible.builtin.apt:
+        name: 
+          - clickhouse-server
+          - clickhouse-client
+          - python3-lxml
+        update_cache: yes
+
+    - name: Change ClickHouse Listen Address For IPv6
+      community.general.xml:
+        path: /etc/clickhouse-server/config.xml
+        xpath: /clickhouse/listen_host
+        value: '::'
+        state: present
+      register: clickhouse_config_listen_host
+
+    - name: Restart ClickHouse Service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+      when: clickhouse_config_listen_host.changed
+
+    - name: Populate Service Facts
+      ansible.builtin.service_facts:
+
+    - name: Validate ClickHouse Service State
+      ansible.builtin.fail: 
+        msg: "clickhouse-server.service is not running!"
+      when: ansible_facts.services["clickhouse-server.service"].state != "running"

@@ -1,0 +1,52 @@
+- name: Creat Kafka MySQL Config
+  hosts: all
+  become: yes
+
+  vars:
+    connect_standalone_properties: "/home/kafka/kafka/config/connect-standalone.properties"
+    debezium_standalone_file: "/home/kafka/kafka/config/debezium-mysql-connect.properties"
+    mysql_host: ""  
+
+  tasks:
+
+    - name: Create MySQL Connector Properties
+      ansible.builtin.copy:
+        dest: "{{debezium_standalone_file}}"
+        content: |
+          name: mysql_covid19_source
+          connector.class=io.debezium.connector.mysql.MySqlConnector
+          database.hostname={{mysql_host}}
+          database.port=3306
+          database.user=debezium
+          database.password=debezium
+          database.include.list=covid19
+          database.server.id=1
+          database.server.name=covid19_source
+          database.history.kafka.bootstrap.servers=localhost:9092
+          database.history.kafka.topic=dbhistory.covid19_source
+          include.schema.changes=true
+          snapshot.locking.mode=minimal
+      become_user: kafka
+
+    - name: Check MySQL Connector Port
+      ansible.builtin.wait_for:
+        port: 8083
+        delay: 5
+        timeout: 10
+        msg: "Timeout waiting for 8083 to respond"
+      register: port_check
+      ignore_errors: yes
+
+    - name: Start Kafka Connect
+      shell: |
+        /home/kafka/kafka/bin/connect-standalone.sh {{connect_standalone_properties}} {{debezium_standalone_file}} &
+      when: port_check.failed == true
+
+    - name: Wait For MySQL Connector Port
+      ansible.builtin.wait_for:
+        port: 8083
+        delay: 5
+        timeout: 300
+        msg: "Timeout waiting for 8083 to respond"
+      register: port_check
+      ignore_errors: false

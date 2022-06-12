@@ -1,0 +1,29 @@
+- name: ClickHouse Hosts
+  hosts: all
+  become: yes
+  vars:
+    database_name: "covid19"
+
+  tasks:
+
+    - name: Change ClickHouse Listen Address For IPv6
+      community.general.xml:
+        path: /etc/clickhouse-server/config.xml
+        xpath: /clickhouse/listen_host
+        value: '::'
+        state: present
+      register: clickhouse_config_listen_host
+
+    - name: Restart ClickHouse Service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: restarted
+      when: clickhouse_config_listen_host.changed
+
+    - name: Populate Service Facts
+      ansible.builtin.service_facts:
+
+    - name: Validate ClickHouse Service State
+      ansible.builtin.fail: 
+        msg: "clickhouse-server.service is not running!"
+      when: ansible_facts.services["clickhouse-server.service"].state != "running"

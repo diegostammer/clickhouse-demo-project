@@ -1,0 +1,45 @@
+- name: Compare MySQL To ClickHouse
+  hosts: all
+  become: yes
+
+  vars:
+    mysql_host: ""
+    mysql_user: ""
+    mysql_pass: ""
+    mysql_db: ""
+    mysql_port: ""
+    mysql_table: ""
+    clickhouse_database: ""
+    clickhouse_table: ""
+
+  tasks:
+
+    - name: Get MySQL Row Count
+      community.mysql.mysql_query:
+        login_host: "{{mysql_host}}"
+        login_user: "{{mysql_user}}"
+        login_password: "{{mysql_pass}}"
+        login_db: "{{mysql_db}}"
+        login_port: "{{mysql_port | int}}"
+        query:
+          - SELECT COUNT(1) AS QTY FROM {{mysql_table}}
+      register: mysql_row_count
+
+    - name : Get ClickHouse Row Count
+      ansible.builtin.shell:
+        cmd: |
+          clickhouse-client --database="{{clickhouse_database}}" --query="SELECT count(1) FROM {{clickhouse_table}}"
+      register: clickhouse_row_count
+
+    - name: Debug - MySQL Row Count
+      ansible.builtin.debug:
+        msg: "MySQL Row Count => {{ mysql_row_count.query_result[0][0].QTY }}"
+
+    - name: Debug - ClickHouse Row Count
+      ansible.builtin.debug:
+        msg: "ClickHouse Row Count => {{ clickhouse_row_count.stdout }}"
+
+    - name: Compare MySQL Row Count To ClickHouse Row Count
+      ansible.builtin.fail: 
+        msg: "MySQL and ClickHouse have different rows!"
+      when: mysql_row_count.query_result[0][0].QTY | int != clickhouse_row_count.stdout | int

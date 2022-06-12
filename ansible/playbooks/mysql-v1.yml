@@ -1,0 +1,262 @@
+- name: MySQL Hosts
+  hosts: all
+  become: yes
+
+  tasks:
+
+    - name: Update MySQL Config - add max_allowed_packet
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: max_allowed_packet=128M
+        state: present
+      register: config_1
+
+    - name: Update MySQL Config - add innodb_buffer_pool_size
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: innodb_buffer_pool_size=1024M
+        state: present
+      register: config_2
+
+    - name: Update MySQL Config - remove bind-address
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp : '^bind-address.*127\.0\.0\.1.*$'
+        state: absent
+      register: config_3
+
+    - name: Update MySQL Config - add bind-address
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: bind-address=0.0.0.0
+        state: present
+      register: config_4
+
+    - name: Update MySQL Config - remove mysqlx-bind-address
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp : '^mysqlx-bind-address.*127\.0\.0\.1.*$'
+        state: absent
+      register: config_5
+
+    - name: Update MySQL Config - add mysqlx-bind-address
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: mysqlx-bind-address=0.0.0.0
+        state: present
+      register: config_6
+
+    - name: Update MySQL Config - add server-id
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: server-id=1
+        state: present
+      register: config_7
+
+    - name: Update MySQL Config - add log_bin
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: log_bin=mysql-bin
+        state: present
+      register: config_8
+
+    - name: Update MySQL Config - add binlog_format
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: binlog_format=row
+        state: present
+      register: config_9
+
+    - name: Update MySQL Config - add binlog_row_image
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: binlog_row_image=full
+        state: present
+      register: config_10
+
+    - name: Update MySQL Config - add binlog_expire_logs_seconds
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: binlog_expire_logs_seconds=864000
+        state: present
+      register: config_11
+
+    - name: Update MySQL Config - add gtid_mode
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: gtid_mode=ON
+        state: present
+      register: config_12
+
+    - name: Update MySQL Config - add interactive_timeout
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: interactive_timeout=3600
+        state: present
+      register: config_13
+
+    - name: Update MySQL Config - add wait_timeout
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: wait_timeout=3600
+        state: present
+      register: config_14
+
+    - name: Update MySQL Config - add enforce_gtid_consistency
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: enforce_gtid_consistency=ON
+        state: present
+      register: config_15
+
+    - name: Update MySQL Config - add binlog_rows_query_log_events
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: binlog_rows_query_log_events=ON
+        state: present
+      register: config_16
+
+    - name: Update MySQL Config - add default_authentication_plugin
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        create: yes
+        line: default_authentication_plugin=mysql_native_password
+        state: present
+      register: config_17
+
+    - name: Restart MySQL
+      ansible.builtin.service:
+        name: mysql
+        state: restarted
+      when: (
+          config_1.changed or
+          config_2.changed or
+          config_3.changed or
+          config_4.changed or
+          config_5.changed or
+          config_6.changed or
+          config_7.changed or
+          config_8.changed or
+          config_9.changed or
+          config_10.changed or
+          config_11.changed or
+          config_12.changed or
+          config_13.changed or
+          config_14.changed or
+          config_15.changed or
+          config_16.changed or
+          config_17.changed
+        )
+
+    - name: Create MySQL Database
+      community.mysql.mysql_db:
+        name: covid19
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+
+    - name: Create MySQL User (covid19)
+      community.mysql.mysql_user:
+        name: covid19
+        password: covid19
+        host: "%"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+        priv: "*.*:SELECT,RELOAD,SHOW DATABASES,REPLICATION SLAVE,REPLICATION CLIENT"
+      no_log: true
+
+    - name: Create MySQL User (debezium)
+      community.mysql.mysql_user:
+        name: debezium
+        password: debezium
+        host: "%"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+        priv: "*.*:SELECT,RELOAD,SHOW DATABASES,REPLICATION SLAVE,REPLICATION CLIENT"
+      no_log: true
+
+    - name: Create MySQL Sample Table
+      community.mysql.mysql_query:
+        login_db: covid19
+        login_password: covid19
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        query:
+          - CREATE TABLE IF NOT EXISTS covid19_cases (
+              id INT NOT NULL AUTO_INCREMENT,
+              date_reported DATE NOT NULL,
+              country_code VARCHAR(2) NOT NULL,
+              country VARCHAR(255) NOT NULL,
+              who_region VARCHAR(255) NOT NULL,
+              new_cases INT NOT NULL,
+              cumulative_cases INT NOT NULL,
+              new_deaths INT NOT NULL,
+              cumulative_deaths INT NOT NULL,
+              PRIMARY KEY (id)
+            );
+
+    - name: Copy Sample Data
+      ansible.builtin.copy:
+        src: ../../tmp/WHO-COVID-19-global-data.csv
+        dest: /var/lib/mysql-files/
+        owner: mysql
+        group: mysql
+        mode: 0644
+
+    - name: Check Sample Data
+      community.mysql.mysql_query:
+        login_db: covid19
+        login_password: covid19
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        query:
+          - SELECT CASE WHEN EXISTS(SELECT 1 FROM covid19_cases LIMIT 1) THEN 'true' ELSE 'false' END AS 'exists';
+      register: sample_loaded
+
+    - name: Debug - sample_loaded
+      ansible.builtin.debug:
+        msg: "sample_loaded => {{ sample_loaded.query_result[0][0].exists }}"
+
+    - name: Load Sample Data Into MySQL
+      community.mysql.mysql_query:
+        login_db: covid19
+        login_password: covid19
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        query:
+          - 
+            LOAD DATA INFILE '/var/lib/mysql-files/WHO-COVID-19-global-data.csv'
+            INTO TABLE covid19_cases
+            FIELDS TERMINATED BY ','
+            OPTIONALLY ENCLOSED BY '"'
+            LINES TERMINATED BY '\n'
+            IGNORE 1 ROWS
+            (
+              date_reported,
+              country_code,
+              country,
+              who_region,
+              new_cases,
+              cumulative_cases,
+              new_deaths,
+              cumulative_deaths
+            );
+      when: sample_loaded.query_result[0][0].exists == 'false'
+
+    - name: Populate Service Facts
+      ansible.builtin.service_facts:
+
+    - name: Validate MySQL Service State
+      ansible.builtin.fail: 
+        msg: "mysql.service is not running!"
+      when: ansible_facts.services["mysql.service"].state != "running"

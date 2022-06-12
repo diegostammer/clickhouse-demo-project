@@ -1,0 +1,209 @@
+- name: Kafka Hosts
+  hosts: all
+  become: yes
+
+  vars:
+    kafka_download_url: "https://downloads.apache.org/kafka/3.2.0/kafka_2.13-3.2.0.tgz"
+    kafka_local_tgz: "/tmp/kafka_2.13-3.2.0.tgz"
+    kafka_install_dir: /home/kafka/kafka
+    kafka_log_dir: /home/kafka/kafka/logs
+    kafka_log_dir_regex: ^log\.dirs=(?!\/home\/kafka\/kafka\/logs).*$
+    kafka_config_file: "{{kafka_install_dir}}/config/server.properties"
+    kafka_connect_config_file: "{{kafka_install_dir}}/config/connect-standalone.properties"
+    kafka_connectors_directory: "{{kafka_install_dir}}/connectors"
+    debezium_config_file: "{{kafka_install_dir}}/config/mysql-debezium.properties"
+    debezium_mysql_plugin_download_url: "https://repo1.maven.org/maven2/io/debezium/debezium-connector-mysql/1.9.3.Final/debezium-connector-mysql-1.9.3.Final-plugin.tar.gz"
+    debezium_mysql_plugin_local_tgz: "/tmp/debezium-connector-mysql-1.9.3.Final-plugin.tar.gz"
+    debezium_mysql_plugin_file: "debezium-connector-mysql-1.9.3.Final.jar"
+    mysql_host: "192.168.56.100"  
+
+  tasks:
+    # - import_tasks: common.yml
+
+    - name: Install acl, java
+      ansible.builtin.apt:
+        name: 
+          - acl
+          - default-jdk
+        state: present
+
+    - name: Add Kafka Group
+      ansible.builtin.group:
+        name: kafka
+        state: present
+
+    - name: Add Kafka User
+      ansible.builtin.user:
+        name: kafka
+        comment: Apache Kafka User
+        group: kafka
+        groups: kafka,sudo
+        append: yes
+
+    - name: Download Kafka
+      ansible.builtin.get_url:
+        url: "{{kafka_download_url}}"
+        dest: "{{kafka_local_tgz}}"
+      become_user: kafka
+
+    - name: Create Kafka Directory
+      ansible.builtin.file:
+        path: "{{kafka_install_dir}}"
+        state: directory
+        mode: '0755'
+      become_user: kafka
+
+    - name: Create Kafka Log Directory
+      ansible.builtin.file:
+        path: "{{kafka_log_dir}}"
+        state: directory
+        mode: '0755'
+      become_user: kafka
+
+    - name: Check Extracted Kafka Directory
+      ansible.builtin.stat:
+        path: "{{kafka_install_dir}}/bin"
+      become_user: kafka
+      register: kafka_bin_dir
+
+    - name: Extract Kafka
+      # ansible.builtin.unarchive doens't work: Failed to find handler for \"/tmp/kafka_2.13-3.2.0.tgz\".
+      # Make sure the required command to extract the file is installed. Command \"/usr/bin/unzip\" 
+      # could not handle archive. Command \"/usr/bin/tar\" could not handle archive.
+      ansible.builtin.shell: |
+        tar -xvzf {{ kafka_local_tgz  }} -C {{kafka_install_dir}} --strip 1
+      become_user: kafka
+      when: kafka_bin_dir.stat.exists == False
+
+    - name: Update Kafka Config - Remove Old Config Of delete.topic.enable
+      ansible.builtin.lineinfile:
+        path: "{{kafka_config_file}}"
+        regexp: ^delete\.topic\.enable(?!\s=\strue).*$
+        state: absent
+      become_user: kafka
+
+    - name: Update Kafka Config - delete.topic.enable
+      ansible.builtin.lineinfile:
+        path: "{{kafka_config_file}}"
+        line: delete.topic.enable = true
+        state: present
+      become_user: kafka
+      register: config_1
+
+    - name: Update Kafka Config - Remove Old Config Of log.dirs
+      ansible.builtin.lineinfile:
+        path: "{{kafka_config_file}}"
+        regexp: "{{kafka_log_dir_regex}}"
+        state: absent
+      become_user: kafka
+
+    - name: Update Kafka Config - log.dirs
+      ansible.builtin.lineinfile:
+        path: "{{kafka_config_file}}"
+        line: "log.dirs={{kafka_log_dir}}"
+        state: present
+      become_user: kafka
+      register: config_2
+
+    - name: Create zookeeper service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/zookeeper.service
+        content: |
+          [Unit]
+          Requires=network.target remote-fs.target
+          After=network.target remote-fs.target
+
+          [Service]
+          Type=simple
+          User=kafka
+          ExecStart=/home/kafka/kafka/bin/zookeeper-server-start.sh /home/kafka/kafka/config/zookeeper.properties
+          ExecStop=/home/kafka/kafka/bin/zookeeper-server-stop.sh
+          Restart=on-abnormal
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Create kafka service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/kafka.service
+        content: |
+          [Unit]
+          Requires=zookeeper.service
+          After=zookeeper.service
+
+          [Service]
+          Type=simple
+          User=kafka
+          ExecStart=/bin/sh -c '/home/kafka/kafka/bin/kafka-server-start.sh /home/kafka/kafka/config/server.properties > /home/kafka/kafka/logs/kafka.log 2>&1'
+          ExecStop=/home/kafka/kafka/bin/kafka-server-stop.sh
+          Restart=on-abnormal
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Enable Zookeeper Service
+      ansible.builtin.service:
+        name: zookeeper
+        enabled: yes
+
+    - name: Enable Kafka Service
+      ansible.builtin.service:
+        name: kafka
+        enabled: yes
+
+    - name: Start Kafka Service
+      ansible.builtin.service:
+        name: kafka
+        state: started
+
+    - name: Restart Kafka
+      ansible.builtin.service:
+        name: kafka
+        state: restarted
+      when: config_1.changed == true or config_2.changed == true
+
+    - name: Populate Service Facts
+      ansible.builtin.service_facts:
+
+    - name: Validate Kafka Service State
+      ansible.builtin.fail: 
+        msg: "kafka.service is not running!"
+      when: ansible_facts.services["kafka.service"].state != "running"
+
+    - name: Create Kafka Connectors Directory
+      ansible.builtin.file:
+        path: "{{kafka_connectors_directory}}"
+        state: directory
+        mode: '0755'
+      become_user: kafka
+
+    - name: Change Kafka Connect Connectors Plugin Directory Configuration
+      ansible.builtin.lineinfile:
+        path: "{{kafka_connect_config_file}}"
+        line: "plugin.path={{kafka_connectors_directory}}"
+        regexp: ^.*plugin.path=.*$
+        state: present
+      become_user: kafka
+
+    - name: Download Debezium Plugin For MySQL
+      ansible.builtin.get_url:
+        url: "{{debezium_mysql_plugin_download_url}}"
+        dest: "{{debezium_mysql_plugin_local_tgz}}"
+      become_user: kafka
+
+    - name: Check Extracted Debezium Plugin
+      ansible.builtin.stat:
+        path: "{{kafka_connectors_directory}}/debezium-connector-mysql/{{debezium_mysql_plugin_file}}"
+      become_user: kafka
+      register: debezium_plugin_file
+
+    - name: Extract Debezium Plugin For MySQL
+      ansible.builtin.shell: |
+        tar -xvzf {{debezium_mysql_plugin_local_tgz}} -C {{kafka_connectors_directory}}
+      become_user: kafka
+      when: debezium_plugin_file.stat.exists == False
+
+    - name: Restart Kafka
+      ansible.builtin.service:
+        name: kafka
+        state: restarted

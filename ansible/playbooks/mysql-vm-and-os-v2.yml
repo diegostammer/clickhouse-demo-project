@@ -1,0 +1,14 @@
+- name: MySQL Hosts
+  hosts: all
+  become: yes
+
+  tasks:
+    - import_tasks: common.yml
+
+    - name: Install mysql-server-8.0, mysql-client-8.0, python3-pymysql
+      ansible.builtin.apt:
+        name: 
+          - mysql-server-8.0
+          - mysql-client-8.0
+          - python3-pymysql
+        state: present

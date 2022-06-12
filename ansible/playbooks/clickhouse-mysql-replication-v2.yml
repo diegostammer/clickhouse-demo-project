@@ -1,0 +1,20 @@
+- name: Create ClickHouse Kafka Consumer
+  hosts: all
+  become: yes
+
+  vars:
+    mysql_host: ""
+    database_name: "covid19"
+
+  tasks:
+
+    - name: Create MySQL Replication
+      ansible.builtin.shell: |
+        create_table_query=$(cat <<EOF
+        set allow_experimental_database_materialized_mysql = 1;
+        CREATE DATABASE IF NOT EXISTS {{database_name}}
+        ENGINE = MaterializedMySQL('{{mysql_host}}:3306', '{{database_name}}', 'covid19', 'covid19');
+
+        EOF
+        )
+        clickhouse-client --multiquery --query="$create_table_query"

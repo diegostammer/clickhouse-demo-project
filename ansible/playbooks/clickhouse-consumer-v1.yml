@@ -1,0 +1,76 @@
+- name: Create ClickHouse Kafka Consumer
+  hosts: all
+  become: yes
+
+  vars:
+    kafka_host: ""
+    database_name: "covid19"
+
+  tasks:
+
+    # - name: Create Database
+    #   ansible.builtin.shell: clickhouse-client --query="CREATE DATABASE IF NOT EXISTS {{ database_name }}"
+
+    # - name: Create Table
+    #   ansible.builtin.shell: |
+    #     create_table_query=$(cat <<EOF
+    #     CREATE TABLE IF NOT EXISTS covid19
+    #     (
+    #       id INT NOT NULL,
+    #       date_reported DATE NOT NULL,
+    #       country_code VARCHAR(2) NOT NULL,
+    #       country VARCHAR(255) NOT NULL,
+    #       who_region VARCHAR(255) NOT NULL,
+    #       new_cases INT NOT NULL,
+    #       cumulative_cases INT NOT NULL,
+    #       new_deaths INT NOT NULL,
+    #       cumulative_deaths INT NOT NULL
+    #     )
+    #     ENGINE = MergeTree() 
+    #     PRIMARY KEY (id)
+    #     EOF
+    #     )
+    #     clickhouse-client --database={{ database_name }} --query="$create_table_query"
+
+    - name: Create Database
+      ansible.builtin.shell: clickhouse-client --query="CREATE DATABASE IF NOT EXISTS {{ database_name }}"
+
+    - name: Create Table
+      ansible.builtin.shell: |
+        create_table_query=$(cat <<EOF
+        CREATE TABLE IF NOT EXISTS covid19_json_string
+        (
+          json_string String
+        )
+        ENGINE = MergeTree() 
+        PRIMARY KEY (json_string)
+        EOF
+        )
+        clickhouse-client --database={{ database_name }} --query="$create_table_query"
+
+    - name: Create Table With Kafka Engine
+      ansible.builtin.shell: |
+        create_table_query=$(cat <<EOF
+        CREATE TABLE IF NOT EXISTS covid19_json_string_from_kafka
+        (
+          json_string String
+        )
+        ENGINE = Kafka
+        SETTINGS kafka_broker_list = '{{kafka_host}}:9092',
+        kafka_topic_list = 'covid19_source.covid19.covid19_cases',
+        kafka_num_consumers = 1,
+        kafka_group_name = 'clickhouse_covid19_kafka_consumer_2',
+        kafka_format = 'JSONAsString'
+        EOF
+        )
+        clickhouse-client --database={{ database_name }} --query="$create_table_query"
+
+    - name: Create Materialized View
+      ansible.builtin.shell: |
+        create_table_query=$(cat <<EOF
+        CREATE MATERIALIZED VIEW mv_covid19_json_string TO covid19_json_string AS
+        SELECT  json_string
+        FROM    covid19_json_string_from_kafka
+        EOF
+        )
+        clickhouse-client --database={{ database_name }} --query="$create_table_query"

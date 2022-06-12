@@ -1,0 +1,30 @@
+- name: ClickHouse Hosts
+  hosts: all
+  become: yes
+  vars:
+    database_name: "covid19"
+
+  tasks:
+    - import_tasks: common.yml
+
+    - name: Add ClickHouse apt key
+      ansible.builtin.apt_key:
+        keyserver: keyserver.ubuntu.com
+        id: 8919F6BD2B48D754
+        state: present
+
+    - name: Add ClickHouse apt repository
+      ansible.builtin.apt_repository:
+        repo: deb https://packages.clickhouse.com/deb stable main
+        filename: /etc/apt/sources.list.d/clickhouse.list
+        state: present
+
+    - name: Update Repositories Cache And Install clickhouse-server, clickhouse-client, python-lxml
+      ansible.builtin.apt:
+        name: 
+          - clickhouse-server
+          - clickhouse-client
+          - python3-lxml
+          - mysql-client-8.0
+          - python3-pymysql
+        update_cache: yes
